@@ -3,12 +3,14 @@ module github.com/yusuferdemnacar/moq-relay-server
 go 1.22.5
 
 require (
+	github.com/manifoldco/promptui v0.9.0
 	github.com/mengelbart/moqtransport v0.3.0
 	github.com/quic-go/quic-go v0.45.1
 	github.com/quic-go/webtransport-go v0.8.0
 )
 
 require (
+	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/pprof v0.0.0-20240430035430-e4905b036c4e // indirect
 	github.com/onsi/ginkgo/v2 v2.17.2 // indirect

@@ -79,7 +79,7 @@ func (c *Client) getChannel(channelID string) error {
 		return err
 	}
 
-	cmd := exec.Command("/mnt/c/ffmpeg/bin/ffplay.exe", "-")
+	cmd := exec.Command("ffplay", "-")
 	stdin, err := cmd.StdinPipe()
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr

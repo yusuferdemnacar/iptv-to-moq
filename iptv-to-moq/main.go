@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,9 +13,21 @@ import (
 	"log"
 	"log/slog"
 	"math/big"
+	"net/http"
 	"os"
+	"strings"
+	"sync"
 
+	"github.com/manifoldco/promptui"
 	"github.com/mengelbart/moqtransport"
+)
+
+var (
+	serverStarted bool
+	serverWg      sync.WaitGroup
+	playlist      map[string]string // Map to store channel name and URL
+	playing       []string          // List to store currently playing channels
+	mu            sync.Mutex        // Mutex to protect the playing list
 )
 
 func main() {
@@ -24,9 +37,8 @@ func main() {
 	runAsServer := flag.Bool("server", false, "if set, run as server otherwise client")
 	quic := flag.Bool("quic", false, "run client in raw QUIC mode")
 	iptvAddr := flag.String("iptv-addr", "", "iptv stream address")
+	cliMode := flag.Bool("cli", false, "run in interactive CLI mode")
 	flag.Parse()
-
-	fmt.Println("runAsServer:", *runAsServer)
 
 	// Open the null device as a file
 	nullFile, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
@@ -36,18 +48,262 @@ func main() {
 	defer nullFile.Close()
 
 	moqtransport.SetLogHandler(slog.NewJSONHandler(nullFile, &slog.HandlerOptions{}))
-	// moqtransport.SetLogHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 
 	if *runAsServer {
 		if err := runServer(*addr, *certFile, *keyFile); err != nil {
-			log.Fatalf("faild to run server: %v", err)
+			log.Fatalf("failed to run server: %v", err)
 		}
 		return
 	}
+
+	if *cliMode {
+		runCLI(addr, quic)
+		return
+	}
+
 	if err := runClient(*addr, *quic, *iptvAddr); err != nil {
-		log.Panicf("faild to run client: %v", err)
+		log.Panicf("failed to run client: %v", err)
 	}
 	log.Println("bye")
+}
+
+func runCLI(addr *string, quic *bool) {
+	fmt.Println("Welcome to the IPTV CLI")
+	for {
+		prompt := promptui.Select{
+			Label: "Select Action",
+			Items: []string{"Upload IPTV Playlist Link", "Upload IPTV Playlist File", "Play Specific Channel", "Exit"},
+		}
+
+		_, result, err := prompt.Run()
+		if err != nil {
+			fmt.Printf("Prompt failed %v\n", err)
+			return
+		}
+
+		switch result {
+		case "Upload IPTV Playlist Link":
+			uploadPlaylistAndPlayChannel(addr, quic)
+		case "Upload IPTV Playlist File":
+			uploadPlaylistFileAndPlayChannel(addr, quic)
+		case "Play Specific Channel":
+			playSpecificChannel(addr, quic)
+		case "Exit":
+			if serverStarted {
+				serverWg.Wait()
+			}
+			return
+		}
+	}
+}
+
+func playSpecificChannel(addr *string, quic *bool) {
+	fmt.Print("Enter Channel URL: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		channelURL := scanner.Text()
+		finalURL := getFinalChannelURL(channelURL)
+		channelName := getChannelNameFromURL(channelURL)
+		fmt.Printf("Playing Channel: %s\n", channelName)
+		mu.Lock()
+		playing = append(playing, channelName)
+		mu.Unlock()
+		go func() {
+			if err := runClient(*addr, *quic, finalURL); err != nil {
+				log.Panicf("failed to run client: %v", err)
+			}
+		}()
+	}
+}
+
+func uploadPlaylistAndPlayChannel(addr *string, quic *bool) {
+	for {
+		fmt.Print("Enter IPTV playlist link: ")
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			playlistLink := scanner.Text()
+			fmt.Printf("Uploaded playlist link: %s\n", playlistLink)
+			// Fetch and parse the playlist
+			fetchAndParsePlaylist(playlistLink)
+		}
+
+		if playlist == nil || len(playlist) == 0 {
+			fmt.Println("Failed to fetch or parse the playlist. Please try again.")
+			return
+		}
+
+		if !selectAndPlayChannel(addr, quic) {
+			break
+		}
+	}
+}
+
+func uploadPlaylistFileAndPlayChannel(addr *string, quic *bool) {
+	for {
+		fmt.Print("Enter path to the playlist file: ")
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			filePath := scanner.Text()
+			fmt.Printf("Uploading playlist file: %s\n", filePath)
+			// Fetch and parse the playlist
+			fetchAndParsePlaylistFile(filePath)
+		}
+
+		if playlist == nil || len(playlist) == 0 {
+			fmt.Println("Failed to fetch or parse the playlist. Please try again.")
+			return
+		}
+
+		if !selectAndPlayChannel(addr, quic) {
+			break
+		}
+	}
+}
+
+func fetchAndParsePlaylist(url string) {
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatalf("failed to fetch playlist: %v", err)
+	}
+	defer resp.Body.Close()
+
+	playlist = make(map[string]string)
+
+	scanner := bufio.NewScanner(resp.Body)
+	var channelName string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#EXTINF:") {
+			channelName = strings.SplitN(line, ",", 2)[1]
+		} else if strings.HasPrefix(line, "http") {
+			playlist[channelName] = line
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatalf("failed to parse playlist: %v", err)
+	}
+
+	fmt.Println("Playlist uploaded successfully.")
+}
+
+func fetchAndParsePlaylistFile(filePath string) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Fatalf("failed to open playlist file: %v", err)
+	}
+	defer file.Close()
+
+	playlist = make(map[string]string)
+
+	scanner := bufio.NewScanner(file)
+	var channelName string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#EXTINF:") {
+			channelName = strings.SplitN(line, ",", 2)[1]
+		} else if strings.HasPrefix(line, "http") {
+			playlist[channelName] = line
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatalf("failed to parse playlist: %v", err)
+	}
+
+	fmt.Println("Playlist uploaded successfully.")
+}
+
+func selectAndPlayChannel(addr *string, quic *bool) bool {
+	if playlist == nil || len(playlist) == 0 {
+		fmt.Println("No playlist uploaded. Please upload a playlist first.")
+		return false
+	}
+
+	channelNames := make([]string, 0, len(playlist))
+	for name := range playlist {
+		channelNames = append(channelNames, name)
+	}
+
+	for {
+		displayPlayingChannels()
+		prompt := promptui.Select{
+			Label: "Select Channel",
+			Items: append([]string{"Back to Main Menu"}, channelNames...),
+		}
+
+		_, selectedChannel, err := prompt.Run()
+		if err != nil {
+			fmt.Printf("Prompt failed %v\n", err)
+			return false
+		}
+
+		if selectedChannel == "Back to Main Menu" {
+			return false
+		}
+
+		channelURL := playlist[selectedChannel]
+		finalURL := getFinalChannelURL(channelURL)
+		mu.Lock()
+		playing = append(playing, selectedChannel)
+		mu.Unlock()
+		go func() {
+			if err := runClient(*addr, *quic, finalURL); err != nil {
+				log.Panicf("failed to run client: %v", err)
+			}
+		}()
+	}
+}
+
+func getFinalChannelURL(initialURL string) string {
+	resp, err := http.Get(initialURL)
+	if err != nil {
+		log.Fatalf("failed to fetch channel URL: %v", err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	var finalURL string
+	var resolutionURLs []string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
+			scanner.Scan()
+			resolutionURLs = append(resolutionURLs, scanner.Text())
+			// Skip to next resolution URL
+			for scanner.Scan() && !strings.HasPrefix(scanner.Text(), "#EXT-X-STREAM-INF:") {
+			}
+		} else if strings.HasPrefix(line, "http") {
+			finalURL = line
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatalf("failed to parse channel URL: %v", err)
+	}
+
+	if len(resolutionURLs) > 0 {
+		prompt := promptui.Select{
+			Label: "Select Resolution",
+			Items: resolutionURLs,
+		}
+
+		_, selectedResolution, err := prompt.Run()
+		if err != nil {
+			fmt.Printf("Prompt failed %v\n", err)
+			return ""
+		}
+		finalURL = selectedResolution
+	}
+
+	if !strings.HasPrefix(finalURL, "http") {
+		finalURL = initialURL[:strings.LastIndex(initialURL, "/")+1] + finalURL
+	}
+
+	return finalURL
 }
 
 func runClient(addr string, quic bool, iptvAddr string) error {
@@ -113,5 +369,26 @@ func generateTLSConfig() *tls.Config {
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
 		NextProtos:   []string{"moq-00", "h3"},
+	}
+}
+
+func getChannelNameFromURL(url string) string {
+	parts := strings.Split(url, "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return "Unknown Channel"
+}
+
+func displayPlayingChannels() {
+	mu.Lock()
+	defer mu.Unlock()
+	if len(playing) > 0 {
+		fmt.Println("Currently playing channels:")
+		for _, channel := range playing {
+			fmt.Printf("- %s\n", channel)
+		}
+	} else {
+		fmt.Println("No channels currently playing.")
 	}
 }
