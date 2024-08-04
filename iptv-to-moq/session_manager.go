@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 
@@ -21,25 +20,12 @@ const (
 type sessionManager struct {
 	channels     map[channelID]*channel
 	channelsLock sync.Mutex
-
-	sessions     []*moqtransport.Session
-	sessionsLock sync.Mutex
 }
 
 func newSessionManager() *sessionManager {
 	return &sessionManager{
-		channels:     map[channelID]*channel{},
-		sessions:     []*moqtransport.Session{},
-		sessionsLock: sync.Mutex{},
+		channels: map[channelID]*channel{},
 	}
-}
-
-func (m *sessionManager) handle(s *moqtransport.Session) {
-	m.sessionsLock.Lock()
-	defer m.sessionsLock.Unlock()
-	m.sessions = append(m.sessions, s)
-	fmt.Println("session added")
-	fmt.Println("sessions:", len(m.sessions))
 }
 
 func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {

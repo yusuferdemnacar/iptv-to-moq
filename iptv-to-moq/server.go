@@ -66,7 +66,6 @@ func (s *server) run() error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		go s.sessionManager.handle(moqSession)
 	})
 	for {
 		conn, err := listener.Accept(ctx)
@@ -89,7 +88,6 @@ func (s *server) run() error {
 				log.Printf("err opening moqtransport server session: %v", err)
 				continue
 			}
-			go s.sessionManager.handle(p)
 		}
 	}
 }
