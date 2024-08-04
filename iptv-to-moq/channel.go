@@ -32,7 +32,8 @@ func (r *channel) subscribe(s *moqtransport.Session, srw moqtransport.Subscripti
 		return
 	}
 	srw.Accept(track)
-	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "debug", "-stream_loop", "-1", "-re", "-i", string(r.ID), "-f", "mp4", "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame", "-")
+	cmd := exec.Command("ffmpeg", "-hide_banner", "-v", "quiet", "-re", "-i", string(r.ID), "-f", "mp4", "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame", "-")
+
 	stdout, err := cmd.StdoutPipe()
 
 	if err != nil {

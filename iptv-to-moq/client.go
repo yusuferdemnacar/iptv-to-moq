@@ -89,7 +89,7 @@ func (c *Client) getChannel(channelID string) error {
 	}
 
 	// Set the buffer size to a larger value (e.g., 65536 bytes)
-	newBufferSize := 65536
+	newBufferSize := 65536 * 4
 
 	file, ok := stdin.(*os.File)
 	if !ok {
