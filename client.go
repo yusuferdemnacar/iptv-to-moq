@@ -54,7 +54,12 @@ func NewClient(conn moqtransport.Connection) (*Client, error) {
 
 func (c *Client) play(channelID string) error {
 
-	t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("iptv-moq/%v", channelID), "video-audio", "")
+	videoTrack, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("iptv-moq/%v", channelID), "video", "")
+	if err != nil {
+		log.Fatalf("failed to subscribe: %v", err)
+		return err
+	}
+	audioTrack, err := c.session.Subscribe(context.Background(), 3, 0, fmt.Sprintf("iptv-moq/%v", channelID), "audio", "")
 	if err != nil {
 		log.Fatalf("failed to subscribe: %v", err)
 		return err
@@ -93,23 +98,46 @@ func (c *Client) play(channelID string) error {
 
 	defer stdin.Close()
 
+	// TODO read video and audio tracks asynchronusly
+
 	go func() {
-		for {
-			o, err := t.ReadObject(context.Background())
+
+		for i := 0; i < 2; i++ {
+			ov, err := videoTrack.ReadObject(context.Background())
 			if err != nil {
 				log.Fatalf("failed to read object: %v", err)
 				return
 			}
+			_, err = stdin.Write(ov.Payload)
+			if err != nil {
+				log.Fatalf("failed to write object: %v", err)
+				return
+			}
+		}
 
-			// fmt.Printf("Read object: %d bytes\n", len(o.Payload))
-
-			_, err = stdin.Write(o.Payload)
+		for {
+			ov, err := videoTrack.ReadObject(context.Background())
+			if err != nil {
+				log.Fatalf("failed to read object: %v", err)
+				return
+			}
+			_, err = stdin.Write(ov.Payload)
 			if err != nil {
 				log.Fatalf("failed to write object: %v", err)
 				return
 			}
 
-			// fmt.Printf("Wrote object: %d bytes\n", len(o.Payload))
+			oa, err := audioTrack.ReadObject(context.Background())
+			if err != nil {
+				log.Fatalf("failed to read object: %v", err)
+				return
+			}
+			_, err = stdin.Write(oa.Payload)
+			if err != nil {
+				log.Fatalf("failed to write object: %v", err)
+				return
+			}
+
 		}
 	}()
 
@@ -120,7 +148,8 @@ func (c *Client) play(channelID string) error {
 		log.Println("ffplay exited successfully")
 	}
 
-	t.Unsubscribe()
+	videoTrack.Unsubscribe()
+	audioTrack.Unsubscribe()
 
 	time.Sleep(1 * time.Second)
 

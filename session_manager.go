@@ -51,5 +51,5 @@ func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtra
 		m.channels[id] = channel
 	}
 
-	channel.subscribe(s, srw)
+	channel.subscribe(s, sub, srw)
 }

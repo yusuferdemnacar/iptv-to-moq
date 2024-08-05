@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"log"
 	"os/exec"
@@ -12,32 +11,41 @@ import (
 type channelID string
 
 type channel struct {
-	ID      channelID
-	track   *moqtransport.LocalTrack
-	session *moqtransport.Session
+	ID         channelID
+	videoTrack *moqtransport.LocalTrack
+	audioTrack *moqtransport.LocalTrack
+	session    *moqtransport.Session
 }
 
 func newChannel(id channelID) *channel {
 	return &channel{
-		ID:      id,
-		track:   nil,
-		session: nil,
+		ID:         id,
+		videoTrack: nil,
+		audioTrack: nil,
+		session:    nil,
 	}
 }
 
-func (r *channel) subscribe(s *moqtransport.Session, srw moqtransport.SubscriptionResponseWriter) {
+func (r *channel) subscribe(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
 
-	track := moqtransport.NewLocalTrack(fmt.Sprintf("iptv-moq/%v", r.ID), "video-audio")
+	track := moqtransport.NewLocalTrack(fmt.Sprintf("iptv-moq/%v", r.ID), sub.TrackName)
 	// TODO: send the video and audio tracks separately
 
 	err := s.AddLocalTrack(track)
-	r.track = track
-	r.session = s
-
 	if err != nil {
 		srw.Reject(1, err.Error())
 		return
 	}
+
+	if sub.TrackName == "video" {
+		r.videoTrack = track
+	} else if sub.TrackName == "audio" {
+		r.audioTrack = track
+	} else {
+		srw.Reject(1, "invalid track name")
+		return
+	}
+	r.session = s
 
 	srw.Accept(track)
 }
@@ -56,83 +64,83 @@ func (r *channel) serve() {
 		return
 	}
 
-	objectID := uint64(0)
+	videoObjectID := uint64(0)
+	audioObjectID := uint64(0)
 	groupID := uint64(0)
+	var moovBox *Box
 
 	for {
-		// get box size and type from the first 8 bytes
-		boxHeader, err := completeRead(stdout, 8)
+		box, err := ReadBox(stdout)
 		if err != nil {
-			log.Fatalf("Error reading box header: %v", err)
-		}
-
-		boxSize := binary.BigEndian.Uint32(boxHeader[:4])
-		boxType := string(boxHeader[4:8])
-
-		// reead the box data
-		boxData, err := completeRead(stdout, int(boxSize-8))
-		if err != nil {
-			log.Fatalf("Error reading box data: %v", err)
+			log.Fatalf("Error reading box: %v", err)
 		}
 
 		// send ftyp and moov boxes as separate objects, and moof+mdat as a single object
-		switch boxType {
+		switch box.GetType() {
 		case "ftyp":
-			// fmt.Printf("%v: ftyp box of size %d\n", r.ID, boxSize)
-			payload := append(boxHeader, boxData...)
-			err := sendObject(r.track, groupID, objectID, payload)
+			// fmt.Printf("ftyp box of size %d\n", box.GetSize())
+			payload := append(box.GetHeader(), box.GetData()...)
+			err := sendObject(r.videoTrack, groupID, videoObjectID, payload)
 			if err != nil {
 				fmt.Printf("Error sending object: %v\n", err)
 				return
 			}
-			objectID++
+			videoObjectID++
 
 		case "moov":
-			// fmt.Printf("%v: moov box of size %d\n", r.ID, boxSize)
-			payload := append(boxHeader, boxData...)
-			sendObject(r.track, groupID, objectID, payload)
-			err := sendObject(r.track, groupID, objectID, payload)
+			// fmt.Printf("moov box of size %d\n", box.GetSize())
+			payload := append(box.GetHeader(), box.GetData()...)
+			err := sendObject(r.videoTrack, groupID, videoObjectID, payload)
 			if err != nil {
 				fmt.Printf("Error sending object: %v\n", err)
 				return
 			}
-			objectID++
+			moovBox = box
+			videoObjectID++
 
 		case "moof":
-			// fmt.Printf("%v: moof box of size %d\n", r.ID, boxSize)
-			moofPayload := append(boxHeader, boxData...)
+			moofPayload := append(box.GetHeader(), box.GetData()...)
 
 			// read the next box to get the mdat box
-			boxHeader, err = completeRead(stdout, 8)
+			nextBox, err := ReadBox(stdout)
 			if err != nil {
-				log.Fatalf("Error reading box header: %v", err)
+				log.Fatalf("Error reading next box: %v", err)
+			}
+			if nextBox.GetType() != "mdat" {
+				log.Fatalf("Expected mdat box, got %s", nextBox.GetType())
 			}
 
-			mdatSize := binary.BigEndian.Uint32(boxHeader[:4])
-			mdatType := string(boxHeader[4:8])
-			if mdatType != "mdat" {
-				log.Fatalf("Expected mdat box, got %s", mdatType)
-			}
-
-			mdatData, err := completeRead(stdout, int(mdatSize-8))
-			if err != nil {
-				log.Fatalf("Error reading mdat data: %v", err)
-			}
-
-			// fmt.Printf("%v: mdat box of size %d\n", r.ID, mdatSize)
-			mdatPayload := append(boxHeader, mdatData...)
+			mdatPayload := append(nextBox.GetHeader(), nextBox.GetData()...)
 
 			// Create a single payload with both moof and mdat
 			payload := append(moofPayload, mdatPayload...)
 			// fmt.Printf(string(payload))
-			err = sendObject(r.track, groupID, objectID, payload)
+			mediaType, err := box.getMediaType(moovBox)
 			if err != nil {
-				return
+				log.Fatalf("Error getting media type: %v", err)
 			}
-			objectID++
+			if mediaType == "video" {
+				err := sendObject(r.videoTrack, groupID, videoObjectID, payload)
+				if err != nil {
+					return
+				}
+				// fmt.Printf("%v mooof box of size %d\n", mediaType, box.GetSize())
+				// fmt.Printf("%v mdat box of size %d\n", mediaType, nextBox.GetSize())
+				videoObjectID++
+			} else if mediaType == "audio" {
+				err := sendObject(r.audioTrack, groupID, videoObjectID, payload)
+				if err != nil {
+					return
+				}
+				// fmt.Printf("%v mooof box of size %d\n", mediaType, box.GetSize())
+				// fmt.Printf("%v mdat box of size %d\n", mediaType, nextBox.GetSize())
+				audioObjectID++
+			} else {
+				log.Fatalf("Unknown media type: %s", mediaType)
+			}
 
 		default:
-			fmt.Printf("Skipping box of type %s and size %d\n", boxType, boxSize)
+			fmt.Printf("Skipping box of type %s and size %d\n", box.GetType(), box.GetSize())
 			// skip the box
 			continue
 		}
