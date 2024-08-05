@@ -13,9 +13,7 @@ import (
 
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
-	"github.com/mengelbart/moqtransport/webtransportmoq"
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/webtransport-go"
 )
 
 type Client struct {
@@ -36,23 +34,6 @@ func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
 	return NewClient(quicmoq.New(conn))
 }
 
-func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
-	dialer := webtransport.Dialer{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-		QUICConfig: &quic.Config{
-			EnableDatagrams: true,
-			MaxIdleTimeout:  time.Hour,
-		},
-	}
-	_, session, err := dialer.Dial(ctx, addr, nil)
-	if err != nil {
-		return nil, err
-	}
-	return NewClient(webtransportmoq.New(session))
-}
-
 func NewClient(conn moqtransport.Connection) (*Client, error) {
 	log.SetOutput(io.Discard)
 	moqSession := &moqtransport.Session{
@@ -71,15 +52,16 @@ func NewClient(conn moqtransport.Connection) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) getChannel(channelID string) error {
+func (c *Client) play(channelID string) error {
 
-	t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("iptv-moq/%v", channelID), "video", "")
+	t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("iptv-moq/%v", channelID), "video-audio", "")
 	if err != nil {
 		log.Fatalf("failed to subscribe: %v", err)
 		return err
 	}
 
-	cmd := exec.Command("ffplay", "-")
+	cmd := exec.Command("/mnt/c/ffmpeg/bin/ffplay.exe", "-") // for WSL2 that can't run it's own ffplay
+	// cmd = exec.Command("ffplay", "-") // for Linux
 	stdin, err := cmd.StdinPipe()
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr
@@ -111,27 +93,42 @@ func (c *Client) getChannel(channelID string) error {
 
 	defer stdin.Close()
 
-	for {
-		o, err := t.ReadObject(context.Background())
-		if err != nil {
-			log.Fatalf("failed to read object: %v", err)
-			return err
+	go func() {
+		for {
+			o, err := t.ReadObject(context.Background())
+			if err != nil {
+				log.Fatalf("failed to read object: %v", err)
+				return
+			}
+
+			// fmt.Printf("Read object: %d bytes\n", len(o.Payload))
+
+			_, err = stdin.Write(o.Payload)
+			if err != nil {
+				log.Fatalf("failed to write object: %v", err)
+				return
+			}
+
+			// fmt.Printf("Wrote object: %d bytes\n", len(o.Payload))
 		}
+	}()
 
-		// fmt.Printf("Read object: %d bytes\n", len(o.Payload))
-
-		_, err = stdin.Write(o.Payload)
-		if err != nil {
-			log.Fatalf("failed to write object: %v", err)
-			return err
-		}
-
-		// fmt.Printf("Wrote object: %d bytes\n", len(o.Payload))
+	err = cmd.Wait()
+	if err != nil {
+		log.Printf("ffplay exited with error: %v", err)
+	} else {
+		log.Println("ffplay exited successfully")
 	}
+
+	t.Unsubscribe()
+
+	time.Sleep(1 * time.Second)
+
+	return nil
 }
 
 func (c *Client) Run(iptvAddr string) error {
-	err := c.getChannel(iptvAddr)
+	err := c.play(iptvAddr)
 	if err != nil {
 		return err
 	}

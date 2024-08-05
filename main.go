@@ -35,7 +35,6 @@ func main() {
 	keyFile := flag.String("key", "localhost-key.pem", "TLS key file")
 	addr := flag.String("addr", "localhost:8080", "listen address")
 	runAsServer := flag.Bool("server", false, "if set, run as server otherwise client")
-	quic := flag.Bool("quic", false, "run client in raw QUIC mode")
 	iptvAddr := flag.String("iptv-addr", "", "iptv stream address")
 	cliMode := flag.Bool("cli", false, "run in interactive CLI mode")
 	flag.Parse()
@@ -48,6 +47,7 @@ func main() {
 	defer nullFile.Close()
 
 	moqtransport.SetLogHandler(slog.NewJSONHandler(nullFile, &slog.HandlerOptions{}))
+	// moqtransport.SetLogHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 
 	if *runAsServer {
 		if err := runServer(*addr, *certFile, *keyFile); err != nil {
@@ -57,17 +57,17 @@ func main() {
 	}
 
 	if *cliMode {
-		runCLI(addr, quic)
+		runCLI(addr)
 		return
 	}
 
-	if err := runClient(*addr, *quic, *iptvAddr); err != nil {
+	if err := runClient(*addr, *iptvAddr); err != nil {
 		log.Panicf("failed to run client: %v", err)
 	}
 	log.Println("bye")
 }
 
-func runCLI(addr *string, quic *bool) {
+func runCLI(addr *string) {
 	fmt.Println("Welcome to the IPTV CLI")
 	for {
 		prompt := promptui.Select{
@@ -83,11 +83,11 @@ func runCLI(addr *string, quic *bool) {
 
 		switch result {
 		case "Upload IPTV Playlist Link":
-			uploadPlaylistAndPlayChannel(addr, quic)
+			uploadPlaylistAndPlayChannel(addr)
 		case "Upload IPTV Playlist File":
-			uploadPlaylistFileAndPlayChannel(addr, quic)
+			uploadPlaylistFileAndPlayChannel(addr)
 		case "Play Specific Channel":
-			playSpecificChannel(addr, quic)
+			playSpecificChannel(addr)
 		case "Exit":
 			if serverStarted {
 				serverWg.Wait()
@@ -97,7 +97,7 @@ func runCLI(addr *string, quic *bool) {
 	}
 }
 
-func playSpecificChannel(addr *string, quic *bool) {
+func playSpecificChannel(addr *string) {
 	fmt.Print("Enter Channel URL: ")
 	scanner := bufio.NewScanner(os.Stdin)
 	if scanner.Scan() {
@@ -109,14 +109,14 @@ func playSpecificChannel(addr *string, quic *bool) {
 		playing = append(playing, channelName)
 		mu.Unlock()
 		go func() {
-			if err := runClient(*addr, *quic, finalURL); err != nil {
+			if err := runClient(*addr, finalURL); err != nil {
 				log.Panicf("failed to run client: %v", err)
 			}
 		}()
 	}
 }
 
-func uploadPlaylistAndPlayChannel(addr *string, quic *bool) {
+func uploadPlaylistAndPlayChannel(addr *string) {
 	for {
 		fmt.Print("Enter IPTV playlist link: ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -132,13 +132,13 @@ func uploadPlaylistAndPlayChannel(addr *string, quic *bool) {
 			return
 		}
 
-		if !selectAndPlayChannel(addr, quic) {
+		if !selectAndPlayChannel(addr) {
 			break
 		}
 	}
 }
 
-func uploadPlaylistFileAndPlayChannel(addr *string, quic *bool) {
+func uploadPlaylistFileAndPlayChannel(addr *string) {
 	for {
 		fmt.Print("Enter path to the playlist file: ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -154,7 +154,7 @@ func uploadPlaylistFileAndPlayChannel(addr *string, quic *bool) {
 			return
 		}
 
-		if !selectAndPlayChannel(addr, quic) {
+		if !selectAndPlayChannel(addr) {
 			break
 		}
 	}
@@ -216,7 +216,7 @@ func fetchAndParsePlaylistFile(filePath string) {
 	fmt.Println("Playlist uploaded successfully.")
 }
 
-func selectAndPlayChannel(addr *string, quic *bool) bool {
+func selectAndPlayChannel(addr *string) bool {
 	if playlist == nil || len(playlist) == 0 {
 		fmt.Println("No playlist uploaded. Please upload a playlist first.")
 		return false
@@ -250,7 +250,7 @@ func selectAndPlayChannel(addr *string, quic *bool) bool {
 		playing = append(playing, selectedChannel)
 		mu.Unlock()
 		go func() {
-			if err := runClient(*addr, *quic, finalURL); err != nil {
+			if err := runClient(*addr, finalURL); err != nil {
 				log.Panicf("failed to run client: %v", err)
 			}
 		}()
@@ -306,24 +306,16 @@ func getFinalChannelURL(initialURL string) string {
 	return finalURL
 }
 
-func runClient(addr string, quic bool, iptvAddr string) error {
+func runClient(addr string, iptvAddr string) error {
 	if iptvAddr == "" {
 		return fmt.Errorf("iptv_addr is required")
 	}
 	var client *Client
 	var err error
-	if quic {
-		client, err = NewQUICClient(context.Background(), addr)
-		if err != nil {
-			return err
-		}
-	} else {
-		client, err = NewWebTransportClient(context.Background(), fmt.Sprintf("https://%v/moq", addr))
-		if err != nil {
-			return err
-		}
+	client, err = NewQUICClient(context.Background(), addr)
+	if err != nil {
+		return err
 	}
-	defer client.session.Close()
 	return client.Run(iptvAddr)
 }
 
@@ -333,8 +325,8 @@ func runServer(addr, certFile, keyFile string) error {
 		log.Printf("failed to generate TLS config from cert file and key, generating in memory certs: %v", err)
 		tlsConfig = generateTLSConfig()
 	}
-	s := newServer(addr, tlsConfig)
-	return s.run()
+	server := newServer(addr, tlsConfig)
+	return server.Run()
 }
 
 func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, error) {
@@ -344,7 +336,7 @@ func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, err
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{"moq-00", "h3"},
+		NextProtos:   []string{"moq-00"},
 	}, nil
 }
 
@@ -368,7 +360,7 @@ func generateTLSConfig() *tls.Config {
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"moq-00", "h3"},
+		NextProtos:   []string{"moq-00"},
 	}
 }
 

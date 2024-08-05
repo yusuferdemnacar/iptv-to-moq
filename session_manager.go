@@ -29,7 +29,6 @@ func newSessionManager() *sessionManager {
 }
 
 func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
-
 	var parts []string
 	if !strings.Contains(sub.Namespace, "/") {
 		srw.Reject(uint64(errorCodeInvalidNamespace), "namespace MUST contain at least one '/'")
@@ -52,5 +51,5 @@ func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtra
 		m.channels[id] = channel
 	}
 
-	go channel.subscribe(s, srw)
+	channel.subscribe(s, srw)
 }

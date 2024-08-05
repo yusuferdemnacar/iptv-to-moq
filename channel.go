@@ -12,37 +12,47 @@ import (
 type channelID string
 
 type channel struct {
-	ID channelID
+	ID      channelID
+	track   *moqtransport.LocalTrack
+	session *moqtransport.Session
 }
 
 func newChannel(id channelID) *channel {
 	return &channel{
-		ID: id,
+		ID:      id,
+		track:   nil,
+		session: nil,
 	}
 }
 
 func (r *channel) subscribe(s *moqtransport.Session, srw moqtransport.SubscriptionResponseWriter) {
 
-	track := moqtransport.NewLocalTrack(1, fmt.Sprintf("iptv-moq/%v", r.ID), "")
+	track := moqtransport.NewLocalTrack(fmt.Sprintf("iptv-moq/%v", r.ID), "video-audio")
+	// TODO: send the video and audio tracks separately
 
 	err := s.AddLocalTrack(track)
+	r.track = track
+	r.session = s
 
 	if err != nil {
 		srw.Reject(1, err.Error())
 		return
 	}
+
 	srw.Accept(track)
+}
+
+func (r *channel) serve() {
+
 	cmd := exec.Command("ffmpeg", "-hide_banner", "-v", "quiet", "-re", "-i", string(r.ID), "-f", "mp4", "-c:v", "libx264", "-preset", "fast", "-tune", "zerolatency", "-c:a", "ac3", "-b:a", "192k", "-movflags", "cmaf+separate_moof+delay_moov+skip_trailer+frag_every_frame", "-")
 
 	stdout, err := cmd.StdoutPipe()
 
 	if err != nil {
-		srw.Reject(1, err.Error())
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		srw.Reject(1, err.Error())
 		return
 	}
 
@@ -70,13 +80,22 @@ func (r *channel) subscribe(s *moqtransport.Session, srw moqtransport.Subscripti
 		case "ftyp":
 			// fmt.Printf("%v: ftyp box of size %d\n", r.ID, boxSize)
 			payload := append(boxHeader, boxData...)
-			sendObject(track, groupID, objectID, payload)
+			err := sendObject(r.track, groupID, objectID, payload)
+			if err != nil {
+				fmt.Printf("Error sending object: %v\n", err)
+				return
+			}
 			objectID++
 
 		case "moov":
 			// fmt.Printf("%v: moov box of size %d\n", r.ID, boxSize)
 			payload := append(boxHeader, boxData...)
-			sendObject(track, groupID, objectID, payload)
+			sendObject(r.track, groupID, objectID, payload)
+			err := sendObject(r.track, groupID, objectID, payload)
+			if err != nil {
+				fmt.Printf("Error sending object: %v\n", err)
+				return
+			}
 			objectID++
 
 		case "moof":
@@ -106,7 +125,10 @@ func (r *channel) subscribe(s *moqtransport.Session, srw moqtransport.Subscripti
 			// Create a single payload with both moof and mdat
 			payload := append(moofPayload, mdatPayload...)
 			// fmt.Printf(string(payload))
-			sendObject(track, groupID, objectID, payload)
+			err = sendObject(r.track, groupID, objectID, payload)
+			if err != nil {
+				return
+			}
 			objectID++
 
 		default:
