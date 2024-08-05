@@ -42,7 +42,7 @@ func main() {
 	// Open the null device as a file
 	nullFile, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
-		log.Fatalf("failed to open null device: %v", err)
+		fmt.Printf("failed to open null device: %v", err)
 	}
 	defer nullFile.Close()
 
@@ -51,7 +51,7 @@ func main() {
 
 	if *runAsServer {
 		if err := runServer(*addr, *certFile, *keyFile); err != nil {
-			log.Fatalf("failed to run server: %v", err)
+			fmt.Printf("failed to run server: %v", err)
 		}
 		return
 	}
@@ -163,7 +163,7 @@ func uploadPlaylistFileAndPlayChannel(addr *string) {
 func fetchAndParsePlaylist(url string) {
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Fatalf("failed to fetch playlist: %v", err)
+		fmt.Printf("failed to fetch playlist: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -182,7 +182,7 @@ func fetchAndParsePlaylist(url string) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatalf("failed to parse playlist: %v", err)
+		fmt.Printf("failed to parse playlist: %v", err)
 	}
 
 	fmt.Println("Playlist uploaded successfully.")
@@ -191,7 +191,7 @@ func fetchAndParsePlaylist(url string) {
 func fetchAndParsePlaylistFile(filePath string) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Fatalf("failed to open playlist file: %v", err)
+		fmt.Printf("failed to open playlist file: %v", err)
 	}
 	defer file.Close()
 
@@ -210,7 +210,7 @@ func fetchAndParsePlaylistFile(filePath string) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatalf("failed to parse playlist: %v", err)
+		fmt.Printf("failed to parse playlist: %v", err)
 	}
 
 	fmt.Println("Playlist uploaded successfully.")
@@ -260,7 +260,7 @@ func selectAndPlayChannel(addr *string) bool {
 func getFinalChannelURL(initialURL string) string {
 	resp, err := http.Get(initialURL)
 	if err != nil {
-		log.Fatalf("failed to fetch channel URL: %v", err)
+		fmt.Printf("failed to fetch channel URL: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -282,7 +282,7 @@ func getFinalChannelURL(initialURL string) string {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatalf("failed to parse channel URL: %v", err)
+		fmt.Printf("failed to parse channel URL: %v", err)
 	}
 
 	if len(resolutionURLs) > 0 {

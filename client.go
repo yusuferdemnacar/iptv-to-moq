@@ -56,12 +56,12 @@ func (c *Client) play(channelID string) error {
 
 	videoTrack, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("iptv-moq/%v", channelID), "video", "")
 	if err != nil {
-		log.Fatalf("failed to subscribe: %v", err)
+		fmt.Printf("failed to subscribe: %v", err)
 		return err
 	}
 	audioTrack, err := c.session.Subscribe(context.Background(), 3, 0, fmt.Sprintf("iptv-moq/%v", channelID), "audio", "")
 	if err != nil {
-		log.Fatalf("failed to subscribe: %v", err)
+		fmt.Printf("failed to subscribe: %v", err)
 		return err
 	}
 
@@ -71,7 +71,7 @@ func (c *Client) play(channelID string) error {
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr
 	if err != nil {
-		log.Fatalf("failed to get stdin pipe: %v", err)
+		fmt.Printf("failed to get stdin pipe: %v", err)
 		return err
 	}
 
@@ -80,19 +80,19 @@ func (c *Client) play(channelID string) error {
 
 	file, ok := stdin.(*os.File)
 	if !ok {
-		log.Fatalf("stdin is not of type *os.File")
+		fmt.Printf("stdin is not of type *os.File")
 		return fmt.Errorf("stdin is not of type *os.File")
 	}
 
 	fd := file.Fd()
 	if _, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_SETPIPE_SZ, uintptr(newBufferSize)); errno != 0 {
-		log.Fatalf("failed to set pipe buffer size: %v", errno)
+		fmt.Printf("failed to set pipe buffer size: %v", errno)
 	} else {
 		log.Printf("set pipe buffer size to %d bytes", newBufferSize)
 	}
 
 	if err := cmd.Start(); err != nil {
-		log.Fatalf("failed to start command: %v", err)
+		fmt.Printf("failed to start command: %v", err)
 		return err
 	}
 
@@ -105,12 +105,12 @@ func (c *Client) play(channelID string) error {
 		for i := 0; i < 2; i++ {
 			ov, err := videoTrack.ReadObject(context.Background())
 			if err != nil {
-				log.Fatalf("failed to read object: %v", err)
+				fmt.Printf("failed to read object: %v", err)
 				return
 			}
 			_, err = stdin.Write(ov.Payload)
 			if err != nil {
-				log.Fatalf("failed to write object: %v", err)
+				fmt.Printf("failed to write object: %v", err)
 				return
 			}
 		}
@@ -118,23 +118,23 @@ func (c *Client) play(channelID string) error {
 		for {
 			ov, err := videoTrack.ReadObject(context.Background())
 			if err != nil {
-				log.Fatalf("failed to read object: %v", err)
+				fmt.Printf("failed to read object: %v", err)
 				return
 			}
 			_, err = stdin.Write(ov.Payload)
 			if err != nil {
-				log.Fatalf("failed to write object: %v", err)
+				fmt.Printf("failed to write object: %v", err)
 				return
 			}
 
 			oa, err := audioTrack.ReadObject(context.Background())
 			if err != nil {
-				log.Fatalf("failed to read object: %v", err)
+				fmt.Printf("failed to read object: %v", err)
 				return
 			}
 			_, err = stdin.Write(oa.Payload)
 			if err != nil {
-				log.Fatalf("failed to write object: %v", err)
+				fmt.Printf("failed to write object: %v", err)
 				return
 			}
 

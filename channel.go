@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 
 	"github.com/mengelbart/moqtransport"
@@ -72,7 +71,7 @@ func (r *channel) serve() {
 	for {
 		box, err := ReadBox(stdout)
 		if err != nil {
-			log.Fatalf("Error reading box: %v", err)
+			fmt.Printf("Error reading box: %v\n", err)
 		}
 
 		// send ftyp and moov boxes as separate objects, and moof+mdat as a single object
@@ -104,10 +103,10 @@ func (r *channel) serve() {
 			// read the next box to get the mdat box
 			nextBox, err := ReadBox(stdout)
 			if err != nil {
-				log.Fatalf("Error reading next box: %v", err)
+				fmt.Printf("Error reading next box: %v", err)
 			}
 			if nextBox.GetType() != "mdat" {
-				log.Fatalf("Expected mdat box, got %s", nextBox.GetType())
+				fmt.Printf("Expected mdat box, got %s", nextBox.GetType())
 			}
 
 			mdatPayload := append(nextBox.GetHeader(), nextBox.GetData()...)
@@ -117,7 +116,7 @@ func (r *channel) serve() {
 			// fmt.Printf(string(payload))
 			mediaType, err := box.getMediaType(moovBox)
 			if err != nil {
-				log.Fatalf("Error getting media type: %v", err)
+				fmt.Printf("Error getting media type: %v", err)
 			}
 			if mediaType == "video" {
 				err := sendObject(r.videoTrack, groupID, videoObjectID, payload)
@@ -136,7 +135,7 @@ func (r *channel) serve() {
 				// fmt.Printf("%v mdat box of size %d\n", mediaType, nextBox.GetSize())
 				audioObjectID++
 			} else {
-				log.Fatalf("Unknown media type: %s", mediaType)
+				fmt.Printf("Unknown media type: %s", mediaType)
 			}
 
 		default:
