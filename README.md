@@ -1,4 +1,4 @@
-# IPTV to Moq
+# IPTV to MOQ (Media Over QUIC)
 
 This project converts IPTV channel lists into Moq format. It is written in Go and provides a command-line interface for processing IPTV channel lists.
 
