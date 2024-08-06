@@ -69,6 +69,6 @@ This project implements a server that serves IPTV streams using MOQ (Media Over 
     - `--quic`: Whether to use raw QUIC or WebTransport as transport. Presence of this sets raw QUIC mode.
         - Default: `false`
     - `--iptv-addr`: URL of the IPTV stream to be asked of the server to convert.
-        - Default: No default value. Mandatory.
+        - Default: No default value. If '--cli' is not set, this is required. If '--cli' is set, this should not be used.
     - `--cli`: Whether to run the client in CLI mode. Presence of this sets the CLI mode.
         - Default: `false`
