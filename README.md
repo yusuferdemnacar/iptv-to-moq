@@ -60,7 +60,7 @@ This project implements a server that serves IPTV streams using MOQ (Media Over 
     ```
     ./iptv-to-moq --addr <ip:port-of-server> \
                   --quic \
-                  --iptv-addr <iptv-stream-URL> --output <path-to-moq-file>
+                  --iptv-addr <iptv-stream-URL> --output <path-to-moq-file> \
                   --cli
     ```
 
