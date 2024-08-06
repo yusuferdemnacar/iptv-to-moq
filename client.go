@@ -13,7 +13,9 @@ import (
 
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
+	"github.com/mengelbart/moqtransport/webtransportmoq"
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/webtransport-go"
 )
 
 type Client struct {
@@ -21,6 +23,7 @@ type Client struct {
 }
 
 func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
+	fmt.Printf("quic client\n")
 	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},
@@ -32,6 +35,24 @@ func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
 		return nil, err
 	}
 	return NewClient(quicmoq.New(conn))
+}
+
+func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
+	fmt.Printf("webtransport client\n")
+	dialer := webtransport.Dialer{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+		QUICConfig: &quic.Config{
+			EnableDatagrams: true,
+			MaxIdleTimeout:  time.Hour,
+		},
+	}
+	_, session, err := dialer.Dial(ctx, addr, nil)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(webtransportmoq.New(session))
 }
 
 func NewClient(conn moqtransport.Connection) (*Client, error) {
