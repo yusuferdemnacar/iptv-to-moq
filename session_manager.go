@@ -18,13 +18,13 @@ const (
 )
 
 type sessionManager struct {
-	channels     map[channelID]*channel
+	channels     map[string]*channel
 	channelsLock sync.Mutex
 }
 
 func newSessionManager() *sessionManager {
 	return &sessionManager{
-		channels: map[channelID]*channel{},
+		channels: map[string]*channel{},
 	}
 }
 
@@ -37,7 +37,7 @@ func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtra
 
 	index := strings.Index(sub.Namespace, "/")
 	parts = append(parts, sub.Namespace[:index], sub.Namespace[index+1:])
-	iptv, id := parts[0], channelID(parts[1])
+	iptv, id := parts[0], parts[1]
 	if iptv != "iptv-moq" {
 		srw.Reject(uint64(errorCodeInvalidNamespace), "first part of namespace MUST equal 'iptv-moq'")
 		return
@@ -47,8 +47,18 @@ func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtra
 	defer m.channelsLock.Unlock()
 	channel, ok := m.channels[id]
 	if !ok {
-		channel = newChannel(id)
+		fytpBox, moovBox, err := getInitBoxes(id)
+		if err != nil {
+			srw.Reject(uint64(errorCodeInternal), err.Error())
+			return
+		}
+		channel = newChannel(id, fytpBox, moovBox)
 		m.channels[id] = channel
+		go channel.serveMoofMdat()
+	} else {
+		if channel.subscriberCount() == 0 {
+			go channel.serveMoofMdat()
+		}
 	}
 
 	channel.subscribe(s, sub, srw)

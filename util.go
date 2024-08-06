@@ -14,7 +14,6 @@ func sendObject(track *moqtransport.LocalTrack, groupID, objectID uint64, payloa
 		ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
 		Payload:              payload,
 	}
-	// fmt.Println("subscriber count:", track.SubscriberCount())
 	if track.SubscriberCount() == 0 {
 		return fmt.Errorf("no subscribers for track")
 	}

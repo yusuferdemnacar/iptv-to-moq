@@ -99,6 +99,7 @@ func (c *Client) play(channelID string) error {
 	defer stdin.Close()
 
 	// TODO read video and audio tracks asynchronusly
+	//     - need thread safe reads on the client side
 
 	go func() {
 
@@ -145,7 +146,7 @@ func (c *Client) play(channelID string) error {
 	if err != nil {
 		log.Printf("ffplay exited with error: %v", err)
 	} else {
-		log.Println("ffplay exited successfully")
+		log.Printf("ffplay exited successfully")
 	}
 
 	videoTrack.Unsubscribe()

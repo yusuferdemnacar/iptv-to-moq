@@ -62,7 +62,7 @@ func main() {
 	}
 
 	if err := runClient(*addr, *iptvAddr); err != nil {
-		log.Panicf("failed to run client: %v", err)
+		fmt.Printf("failed to run client: %v\n", err)
 	}
 	log.Println("bye")
 }
@@ -110,7 +110,7 @@ func playSpecificChannel(addr *string) {
 		mu.Unlock()
 		go func() {
 			if err := runClient(*addr, finalURL); err != nil {
-				log.Panicf("failed to run client: %v", err)
+				fmt.Printf("failed to run client: %v\n", err)
 			}
 		}()
 	}
@@ -251,7 +251,7 @@ func selectAndPlayChannel(addr *string) bool {
 		mu.Unlock()
 		go func() {
 			if err := runClient(*addr, finalURL); err != nil {
-				log.Panicf("failed to run client: %v", err)
+				fmt.Printf("failed to run client: %v\n", err)
 			}
 		}()
 	}

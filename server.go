@@ -54,18 +54,6 @@ func (s *server) Run() error {
 				log.Printf("err opening moqtransport server session: %v", err)
 				continue
 			}
-
-			var matchedChannel *channel
-			for _, channel := range s.sessionManager.channels {
-				if channel.session == p {
-					matchedChannel = channel
-					break
-				}
-			}
-
-			if matchedChannel != nil {
-				go matchedChannel.serve()
-			}
 		} else {
 			log.Printf("unknown protocol: %v", conn.ConnectionState().TLS.NegotiatedProtocol)
 			conn.CloseWithError(quic.ApplicationErrorCode(0x02), "unknown protocol")
