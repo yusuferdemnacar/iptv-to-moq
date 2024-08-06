@@ -2,6 +2,12 @@
 
 This project converts IPTV channel lists into Moq format. It is written in Go and provides a command-line interface for processing IPTV channel lists.
 
+## Requirements
+
+- Go 1.22 or later
+- ffmpeg
+- ffplay
+
 ## Installation
 
 1. **Clone the repository:**
