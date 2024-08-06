@@ -87,7 +87,7 @@ func (c *Client) play(channelID string) error {
 	}
 
 	cmd := exec.Command("/mnt/c/ffmpeg/bin/ffplay.exe", "-") // for WSL2 that can't run it's own ffplay
-	// cmd = exec.Command("ffplay", "-") // for Linux
+	// cmd = exec.Command("ffplay", "-") // for all other cases where ffplay runs properly
 	stdin, err := cmd.StdinPipe()
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr
@@ -97,6 +97,7 @@ func (c *Client) play(channelID string) error {
 	}
 
 	// Set the buffer size to a larger value (e.g., 65536 bytes)
+	// Remove this block for windows as windows adjusts the buffer size automatically
 	newBufferSize := 65536 * 4
 
 	file, ok := stdin.(*os.File)
