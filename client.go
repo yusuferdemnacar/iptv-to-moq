@@ -23,7 +23,6 @@ type Client struct {
 }
 
 func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
-	fmt.Printf("quic client\n")
 	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},
@@ -38,7 +37,6 @@ func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
 }
 
 func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
-	fmt.Printf("webtransport client\n")
 	dialer := webtransport.Dialer{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
@@ -86,8 +84,8 @@ func (c *Client) play(channelID string) error {
 		return err
 	}
 
-	// cmd := exec.Command("/mnt/c/ffmpeg/bin/ffplay.exe", "-") // for WSL2 that can't run it's own ffplay
-	cmd := exec.Command("ffplay", "-") // for all other cases where ffplay runs properly
+	cmd := exec.Command("/mnt/c/ffmpeg/bin/ffplay.exe", "-") // for WSL2 that can't run it's own ffplay
+	// cmd = exec.Command("ffplay", "-") // for all other cases where ffplay runs properly
 	stdin, err := cmd.StdinPipe()
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr
